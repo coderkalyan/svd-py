@@ -369,7 +369,14 @@ class Parser:
             parsed = value.text[1:-1]
             field.bit_range = tuple(map(int, parsed.split(":")))
         # TODO support the other types of bit range definition
+        elif (value := tree.find("bitOffset")) is not None:
+            offset = int(value.text)
+            value = tree.find("bitWidth")
+            assert value is not None
+            width = int(value.text)
+            field.bit_range = (offset, offset + width - 1)
         else:
+            print(etree.tostring(tree, pretty_print=True))
             raise KeyError("Unable to find any keys for bit range definition")
 
         if (value := tree.find("access")) is not None:
