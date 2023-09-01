@@ -6,6 +6,8 @@ access_map = {
     "read-write": svd.Access.READ_WRITE,
     "read-only": svd.Access.READ_ONLY,
     "write-only": svd.Access.WRITE_ONLY,
+    "writeOnce": svd.Access.WRITE_ONCE,
+    "read-writeOnce": svd.Access.READ_WRITE_ONCE,
 }
 
 
@@ -13,6 +15,11 @@ protection_map = {
     "s": svd.Protection.SECURE,
     "n": svd.Protection.NON_SECURE,
     "p": svd.Protection.PRIVILEGED,
+}
+
+sau_region_access_map = {
+    "n": svd.SAURegionAccess.NON_SECURE,
+    "c": svd.SAURegionAccess.SECURE,
 }
 
 
@@ -88,6 +95,13 @@ class Parser:
         """Initializes an svd.Device instance from an XML string"""
 
         root = etree.fromstring(bytes(bytearray(content, encoding='utf-8')))
+        """
+        for elem in root.iter('*'):
+            if elem.text is not None:
+                elem.text = elem.text.strip()
+            if elem.tail is not None:
+                elem.tail = elem.tail.strip()
+        """
 
         return Parser.parse_device(root)
 
@@ -195,15 +209,64 @@ class Parser:
             cpu.vtor = bool_map[value.text]
         if (value := tree.find("deviceNumInterrupts")) is not None:
             cpu.num_interrupts = int(value.text, 0)
+            
+        # SAU Regions (optional)
+        if (value := tree.find("sauNumRegions")) is not None:
+            cpu.sau_num_regions = int(value.text, 0)
+        if (value := tree.find("sauRegionsConfig")) is not None:
+            cpu.sau_region_config = cls.parse_sau(value)
 
         return cpu
 
+    @classmethod 
+    def parse_sau(cls, tree):
+        sau_config = svd.SAURegionConfig()
+        
+        attrib = tree.attrib
+        if "enabled" in attrib:
+            sau_config.enabled = bool_map[attrib["enabled"]]
+        if "protectionWhenDisabled" in attrib:
+            sau_config.protection = protection_map[attrib["protectionWhenDisabled"]]
+
+        for node in tree.findall("region"):
+            sau_config.sau_regions.append(cls.parse_sau_region(node))
+
+        return sau_config
+
+    @classmethod
+    def parse_sau_region(cls, tree):
+        sau_region = svd.SAURegion()
+
+        attrib = tree.attrib
+        if "enabled" in attrib:
+            sau_region.enabled = bool_map[attrib["enabled"]]
+        if "name" in attrib:
+            sau_region.name = attrib["name"]
+
+        if (value := tree.find("base")) is not None:
+            sau_region.base_address = int(value.text, 0)
+        else:
+            raise KeyError("Unable to find key 'base' in SAU Region")
+        if (value := tree.find("limit")) is not None:
+            sau_region.limit_address = int(value.text, 0)
+        else:
+            raise KeyError("Unable to find key 'limit' in SAU Region")
+        if (value := tree.find("access")) is not None:
+            sau_region.access = sau_region_access_map[value.text]
+        else:
+            raise KeyError("Unable to find key 'access' in SAU Region")
+
+        return sau_region
+        
     @classmethod
     def parse_peripherals(cls, tree):
         peripherals = []
 
+        i = 0
         for node in tree.findall("peripheral"):
             peripherals.append(cls.parse_peripheral(node))
+            # if i == 0: print(etree.tostring(node))
+            i += 1
 
         return peripherals
 
@@ -222,6 +285,8 @@ class Parser:
             raise KeyError("Unable to find key 'baseAddress'")
 
         # optional information
+        if (value := tree.find("version")) is not None:
+            peripheral.svd_version = value.text
         if (value := tree.find("description")) is not None:
             peripheral.description = value.text
         if (value := tree.find("alternatePeripheral")) is not None:
@@ -346,6 +411,11 @@ class Parser:
         if (node := tree.find("fields")) is not None:
             register.fields = cls.parse_fields(node)
 
+        if len(register.fields) > 0:
+            register.bits = 0
+            for field in register.fields:
+                register.bits |= field.bits
+
         return register
 
     @classmethod
@@ -368,7 +438,12 @@ class Parser:
         if (value := tree.find("bitRange")) is not None:
             parsed = value.text[1:-1]
             field.bit_range = tuple(map(int, parsed.split(":")))
-        # TODO support the other types of bit range definition
+        elif (value := tree.find("lsb")) is not None:
+            msb = tree.find("msb")
+            assert msb is not None
+            msb_val = int(msb.text, 0)
+            lsb_val = int(value.text, 0)
+            field.bit_range = (msb_val, lsb_val)
         elif (value := tree.find("bitOffset")) is not None:
             offset = int(value.text)
             value = tree.find("bitWidth")
@@ -376,7 +451,7 @@ class Parser:
             width = int(value.text)
             field.bit_range = (offset, offset + width - 1)
         else:
-            print(etree.tostring(tree, pretty_print=True))
+            cls.print_tree(tree)
             raise KeyError("Unable to find any keys for bit range definition")
 
         if (value := tree.find("access")) is not None:
@@ -385,5 +460,15 @@ class Parser:
             field.modify_operation = write_operation_map[value.text]
         if (value := tree.find("readAction")) is not None:
             field.read_operation = read_operation_map[value.text]
+        if (value := tree.find("description")) is not None:
+            field.description = value.text
+
+        for i in range(field.bit_range[1], field.bit_range[0] + 1):
+            field.bits |= (1 << i)
 
         return field
+    
+    @classmethod
+    def print_tree(cls, tree):
+        print(etree.tostring(tree, pretty_print=True, encoding='unicode'))
+   

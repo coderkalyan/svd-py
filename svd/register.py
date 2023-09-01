@@ -56,6 +56,10 @@ class Field:
     access: Access = Access.READ_WRITE
     write_operation: WriteOperation = WriteOperation.MODIFY
     read_operation: ReadOperation = ReadOperation.NONE
+    reset_value: int = 0
+
+    # calculated based on bit range
+    bits: int = 0
     
 
 @dataclass
@@ -79,3 +83,6 @@ class Register:
     read_operation: ReadOperation = ReadOperation.NONE
 
     fields: [Field] = field(default_factory=list)
+    
+    # calculated based on bit ranges of fields (if they exist)
+    bits: int = 0xFFFFFFFF

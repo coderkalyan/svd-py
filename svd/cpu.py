@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from enum import Enum, auto
+from .sau import SAURegionConfig
 
 
 class Endian(Enum):
@@ -30,6 +31,10 @@ class CPU:
     itcm: bool = False
     dtcm: bool = False
     vtor: bool = True
+    vendor_systick: bool = False
     num_interrupts: int = 0
 
-    # TODO: sau regions
+    # SAU Regions (optional)
+    sau_num_regions: int = 0
+    sau_region_config: SAURegionConfig = None
+
