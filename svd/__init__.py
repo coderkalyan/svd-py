@@ -8,3 +8,6 @@ from svd.peripheral import Peripheral
 from svd.protection import Protection
 from svd.register import Register, DataType, WriteOperation, ReadOperation, Field
 from svd.parser import Parser
+
+__version__ = "0.0.1"
+

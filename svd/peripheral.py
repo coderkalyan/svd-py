@@ -30,6 +30,6 @@ class Peripheral:
     default_protection: Protection = Protection.SECURE
     default_reset_value: int = 0
     reset_mask: int = 0xFFFF
-    address_block: AddressBlock = AddressBlock()
+    address_block: AddressBlock = field(default_factory=AddressBlock)
     interrupts: [Interrupt] = field(default_factory=list)
     registers: [Register] = field(default_factory=list)
